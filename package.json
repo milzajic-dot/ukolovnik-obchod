@@ -1,0 +1,8 @@
+{
+  "name": "ukolovnik-obchod",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Úkolovník obchodního týmu Konica Minolta",
+  "engines": { "node": ">=18" }
+}

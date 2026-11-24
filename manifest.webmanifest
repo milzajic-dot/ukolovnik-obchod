@@ -1,0 +1,14 @@
+{
+  "name": "Úkolovník obchodu – Konica Minolta",
+  "short_name": "Úkolovník",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f5f8",
+  "theme_color": "#0077c8",
+  "lang": "cs",
+  "icons": [
+    { "src": "/api/icon?s=192", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/api/icon?s=512", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

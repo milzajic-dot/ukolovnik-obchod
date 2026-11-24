@@ -1,0 +1,69 @@
+rules_version = '2';
+// Pravidla přístupu k datům Úkolovníku obchodu.
+// Vložte je ve Firebase konzoli: Firestore Database → Rules → Publish.
+// Při změně domény nebo prvních administrátorů upravte dvě funkce níže
+// a stejné hodnoty nastavte ve Vercelu (ALLOWED_EMAIL_DOMAIN, ADMIN_EMAILS).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Povolená firemní doména e-mailu.
+    function domainOk() {
+      return request.auth.token.email.lower().matches('.*@konicaminolta[.]cz$');
+    }
+    // První administrátoři — dostanou roli admin při prvním přihlášení.
+    function bootstrapAdmin() {
+      return request.auth.token.email.lower() in ['milan.zajic@konicaminolta.cz'];
+    }
+
+    function authed() {
+      return request.auth != null && request.auth.token.email_verified == true && domainOk();
+    }
+    function meDoc() { return /databases/$(database)/documents/members/$(request.auth.uid); }
+    function isMember() { return authed() && exists(meDoc()); }
+    function isAdmin() { return isMember() && get(meDoc()).data.role == 'admin'; }
+    function myEmail() { return request.auth.token.email.lower(); }
+
+    match /members/{id} {
+      allow read: if authed();
+
+      // Vlastní profil při prvním přihlášení. Roli admin lze získat jen jako první
+      // administrátor, nebo převzetím profilu, který admin předem založil s rolí admin.
+      allow create: if authed() && id == request.auth.uid
+        && request.resource.data.email == myEmail()
+        && (request.resource.data.role == 'user'
+            || bootstrapAdmin()
+            || (request.resource.data.role == 'admin'
+                && request.resource.data.get('alias', '') != ''
+                && get(/databases/$(database)/documents/members/$(request.resource.data.alias)).data.role == 'admin'
+                && get(/databases/$(database)/documents/members/$(request.resource.data.alias)).data.email == myEmail()));
+
+      // Admin zakládá uživatele předem (id začíná "p-").
+      allow create: if isAdmin() && id.matches('p-.*');
+
+      // Uživatel mění svůj profil (bez role a e-mailu); admin může cokoli.
+      allow update: if isAdmin()
+        || (authed() && id == request.auth.uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.email == resource.data.email);
+
+      // Admin maže; uživatel smí smazat předem založený profil se svým e-mailem po jeho převzetí.
+      allow delete: if isAdmin()
+        || (authed() && id.matches('p-.*') && resource.data.email == myEmail());
+    }
+
+    match /tasks/{id} {
+      allow read, create, update: if isMember();
+      allow delete: if isAdmin();
+    }
+
+    match /groups/{id} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+
+    match /config/{id} {
+      allow read: if isMember();
+      allow write: if isAdmin();
+    }
+  }
+}
