@@ -49,7 +49,7 @@ E-mailová upozornění zatím nejsou zapojena (volba v nastavení je připraven
 index.html            aplikace (UI + Firebase SDK z CDN)
 api/config.js         veřejná konfigurace pro prohlížeč
 api/parse.js          rozpoznání úkolů ze zápisu (Anthropic API, ověřuje Firebase token)
-api/icon.js           ikony aplikace
+icon.svg, icon-*.png  ikony aplikace
 api/_lib.js           sdílené funkce
 firestore.rules       pravidla přístupu k datům (vložit do Firebase konzole)
 manifest.webmanifest  PWA manifest, sw.js service worker
