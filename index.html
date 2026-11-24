@@ -140,6 +140,11 @@ td input{min-width:8em}
 .chip button{width:32px;height:32px;border:0;background:none;border-radius:50%;cursor:pointer;font-size:18px;line-height:1}.chip button:hover{background:#0000001a}
 .chk[disabled]{cursor:not-allowed}.chk[disabled]::before{border-style:dashed;opacity:.55}.row.done .chk[disabled]::before{opacity:.6;border-style:solid}
 select[disabled]{opacity:.65}
+.prog{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:4px 0 10px}.prog i{display:block;height:100%;background:var(--blue)}
+.who{list-style:none;margin:0;padding:0}.who li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
+.who .wi{width:22px;height:22px;border-radius:50%;border:2px dashed var(--mut);display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
+.who li.ok .wi{background:var(--blue);border:2px solid var(--blue)}.who .lnk{text-align:left;padding:8px 0;font-size:15px;color:var(--ink);text-decoration:none;font-weight:500}
+.who li.me .lnk{font-weight:700}.who .ws{font-size:13px;color:var(--mut);text-align:right;white-space:nowrap}.who li.ok .ws{color:var(--blue)}
 label.btn{font-size:16px;font-weight:500;color:var(--blue)}
 .ini{display:none}.mb{display:none!important}
 @media(max-width:600px){
@@ -235,6 +240,11 @@ const resolve=id=>S.members[id]?id:((Object.entries(S.members).find(([,m])=>m&&m
 const canDone=t=>!!S.me&&t.assignee===S.me&&canWrite();
 const isMine=t=>t.assignee===S.me||(String(t.assignee||'').startsWith('g:')&&((grp(t.assignee)||{}).members||[]).some(x=>myIds().includes(x)));
 const tasks=()=>Object.entries(S.tasks).filter(([,t])=>t&&t.kind!=='info');
+// Kopie jednoho úkolu zadaného více lidem (stejná dávka). Starší úkoly bez dávky se poznají podle autora, času a názvu.
+const bkey=t=>t.batch||[t.author,t.createdAt,t.title].join('|');
+let BC={src:null,map:null};
+function batchOf(t){if(BC.src!==S.tasks){const m=new Map();for(const [id,x] of tasks()){const k=bkey(x);if(!m.has(k))m.set(k,[]);m.get(k).push([id,x])}BC={src:S.tasks,map:m}}return BC.map.get(bkey(t))||[]}
+const bProg=t=>{const b=batchOf(t);return b.length>1?{n:b.length,d:b.filter(([,x])=>x.status==='done').length}:null};
 const infos=()=>Object.entries(S.tasks).filter(([,t])=>t&&t.kind==='info').sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0));
 const byDue=(a,b)=>(a[1].due||'9999').localeCompare(b[1].due||'9999');
 const isLate=t=>t.status!=='done'&&t.due&&daysTo(t.due)<0;
@@ -286,7 +296,8 @@ function pushNotes(){
 function dueTxt(t){if(!t.due)return 'bez termínu';const d=daysTo(t.due);if(t.status!=='done'){if(d===0)return 'dnes';if(d===1)return 'zítra'}return fmt(t.due)}
 function row(id,t,showWho){
   const cls=t.status==='done'?'done':isLate(t)?'late':isSoon(t)?'soon':'';
-  const meta=[showWho||String(t.assignee||'').startsWith('g:')?nm(t.assignee):'',t.group&&S.groups[t.group]?'skupina '+S.groups[t.group].name:'',SRC[t.source]||'',t.meeting||''].filter(Boolean).join(' · ');
+  const bp=bProg(t);
+  const meta=[showWho||String(t.assignee||'').startsWith('g:')?nm(t.assignee):'',bp?`splnilo ${bp.d}/${bp.n}`:'',t.group&&S.groups[t.group]?'skupina '+S.groups[t.group].name:'',SRC[t.source]||'',t.meeting||''].filter(Boolean).join(' · ');
   return `<li class="row ${cls}"><button class="chk" data-act="toggle" data-id="${esc(id)}" aria-label="${canDone(t)?(t.status==='done'?'Znovu otevřít':'Označit jako splněný'):'Splnit může jen řešitel'}: ${esc(t.title)}" title="${canDone(t)?'':'Splnit může jen řešitel'}"${canDone(t)?'':' disabled'}></button><button class="rt" data-act="open" data-id="${esc(id)}"><span class="tt">${esc(t.title)}</span><span class="meta">${esc(meta)}</span></button><span class="due">${esc(dueTxt(t))}</span><span class="st st-${esc(t.status)}">${esc(ST[t.status]||'')}</span></li>`;
 }
 
@@ -409,6 +420,12 @@ function close(){$('#layer').hidden=true;$('#layer').innerHTML='';S.gEdit=null}
 function panel(label,inner){closeBell();$('#layer').innerHTML=`<div class="ov" data-act="close"></div><aside class="panel" role="dialog" aria-modal="true" aria-label="${esc(label)}">${inner}</aside>`;$('#layer').hidden=false}
 const xBtn='<button class="x" data-act="close" aria-label="Zavřít">×</button>';
 
+function whoDone(id,t){const b=batchOf(t);if(b.length<2)return'';
+  const done=b.filter(([,x])=>x.status==='done').length;
+  const rows=b.slice().sort((a,c)=>(a[1].status==='done'?0:1)-(c[1].status==='done'?0:1)||(a[1].doneAt||0)-(c[1].doneAt||0)||nm(a[1].assignee).localeCompare(nm(c[1].assignee),'cs'));
+  return `<h3>Kdo úkol splnil <span class="hint">(${done} z ${b.length})</span></h3>
+  <div class="prog" role="img" aria-label="Splněno ${done} z ${b.length}"><i style="width:${done/b.length*100}%"></i></div>
+  <ul class="who">${rows.map(([xid,x])=>`<li class="${x.status==='done'?'ok':''}${xid===id?' me':''}"><span class="wi" aria-hidden="true">${x.status==='done'?'✓':''}</span><button class="lnk" data-act="open" data-id="${esc(xid)}">${esc(nm(x.assignee))}</button><span class="ws">${x.status==='done'?'splněno '+esc(fmtT(x.doneAt)):esc(ST[x.status]||'')}${x.status!=='done'&&isLate(x)?' · po termínu':''}</span></li>`).join('')}</ul>`}
 function openTask(id){
   const t=S.tasks[id];if(!t)return;const info=t.kind==='info';
   const g=String(t.assignee||'').startsWith('g:')?grp(t.assignee):null;
@@ -419,6 +436,7 @@ function openTask(id){
   <div class="acts"><button class="btn pri" data-act="saveTask" data-id="${esc(id)}">Uložit změny</button>${isAdmin()?`<button class="btn danger" data-act="delTask" data-id="${esc(id)}">Smazat</button>`:''}</div>
   ${info?'':`<h3>Řešitel: ${esc(nm(t.assignee))}</h3>${canDone(t)?'':`<p class="hint">Úkol může označit jako splněný jen řešitel${g?' — tento starší úkol je přidělený celé skupině, předejte ho konkrétní osobě':''}.</p>`}
   <div class="deleg"><select id="dTo" aria-label="Předat komu">${mOpts(t.assignee,false)}</select><input id="dNote" placeholder="Poznámka k předání" aria-label="Poznámka k předání"><button class="btn" data-act="delegate" data-id="${esc(id)}">Předat</button></div>`}
+  ${info?'':whoDone(id,t)}
   <h3>Historie</h3><ol class="log">${(t.log||[]).slice().reverse().map(l=>`<li><time>${esc(fmtT(l.t))}</time>${esc(nm(l.by))}: ${esc(l.a)}</li>`).join('')||'<li>Bez záznamů</li>'}</ol>
   <p class="hint">Zadal(a) ${esc(nm(t.author))}, ${esc(fmtT(t.createdAt))}${t.meeting?` · z porady „${esc(t.meeting)}“`:''}${t.group&&S.groups[t.group]?` · rozděleno ze skupiny ${esc(S.groups[t.group].name)}`:''}</p>`);
   $('.panel .x').focus();
@@ -446,7 +464,7 @@ async function create(){
   const k=S.newKind,now=Date.now();
   const t={kind:k,title,desc:$('#nD').value.trim(),author:S.me,createdAt:now,updatedAt:now,source:k==='info'?'':$('#nS').value,log:[{t:now,by:S.me,a:k==='info'?'informace zveřejněna':'úkol vytvořen'}]};
   if(k==='task')Object.assign(t,{assignee:'',due:$('#nDue').value,status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});
-  const ids=[...S.nSel],list=k==='task'?(ids.length?ids.map(id=>({...t,assignee:id})):[t]):[t];
+  const ids=[...S.nSel],batch=rid('b'),list=k==='task'?(ids.length?ids.map(id=>({...t,assignee:id,batch})):[t]):[t];
   if(await addTasks(list)){close();toast(k==='info'?'Informace zveřejněna':list.length>1?`Vytvořeno: ${list.length} ${pl(list.length,'úkol','úkoly','úkolů')} — každý řešitel má svůj`:'Úkol vytvořen')}
 }
 async function saveTask(id){
@@ -608,7 +626,7 @@ async function createImport(){
   const rows=S.importRows.filter(r=>r.on&&r.title.trim());if(!rows.length)return;S.creating=true;render();
   const meeting=(S.f.impName||'').trim()||'Porada '+fmt(S.f.impDate||today()),now=Date.now();
   const list=rows.flatMap(r=>{const t={kind:r.kind,title:r.title.trim(),desc:r.desc||'',author:S.me,createdAt:now,updatedAt:now,source:'porada',meeting,log:[{t:now,by:S.me,a:'vytvořeno importem z porady'}]};
-    if(r.kind==='task'){Object.assign(t,{assignee:r.assignee||'',due:r.due||'',status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});return expand(t)}return[t]});
+    if(r.kind==='task'){Object.assign(t,{batch:rid('b'),assignee:r.assignee||'',due:r.due||'',status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});return expand(t)}return[t]});
   const ok=await addTasks(list);S.creating=false;
   if(ok){S.importRows=[];S.f.impText='';S.f.impName='';toast(`Vytvořeno ${list.length} ${pl(list.length,'položka','položky','položek')} z porady „${meeting}“`);S.scope='vse';S.fGroup='';S.fStatus='aktivni';location.hash='ukoly'}
   render();
