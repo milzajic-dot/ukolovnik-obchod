@@ -72,7 +72,7 @@ nav a:hover{background:var(--card)}nav a[aria-current]{background:var(--blue);co
 .row.late .due{color:var(--pinkt);font-weight:600}.row.soon .due{color:var(--soon);font-weight:600}
 .st{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;border:1px solid var(--line);white-space:nowrap}
 .st-progress{background:var(--blue);color:var(--onblue);border-color:var(--blue)}
-@media(max-width:600px){.row{grid-template-columns:44px minmax(0,1fr) auto}.row .st{display:none}}
+@media(max-width:600px){.row{grid-template-columns:44px minmax(0,1fr) auto;row-gap:2px}.row .chk,.row .rt{grid-row:1/3}.row .due{grid-column:3;grid-row:1;align-self:end}.row .st{grid-column:3;grid-row:2;justify-self:end;align-self:start;font-size:11px;padding:2px 7px}.row .st-open{display:none}.row.grow .st,.row.grow .due{display:none}.row.grow .rt{grid-column:2;grid-row:1}}
 .empty{padding:22px 0;color:var(--mut)}
 .bars{display:grid;gap:10px}
 .bar{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) 4.5em;gap:10px;align-items:center;font-size:14px}
@@ -136,6 +136,10 @@ td input{min-width:8em}
 .row.grow{grid-template-columns:0 minmax(0,1fr) 0 0}
 .filters select{max-width:100%}
 .btn.danger{border-color:var(--pinkt);color:var(--pinkt)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}.chip{display:inline-flex;align-items:center;gap:4px;background:light-dark(#e3f1fb,#0f3352);color:var(--ink);border-radius:99px;padding:4px 4px 4px 12px;font-size:15px}
+.chip button{width:32px;height:32px;border:0;background:none;border-radius:50%;cursor:pointer;font-size:18px;line-height:1}.chip button:hover{background:#0000001a}
+.chk[disabled]{cursor:not-allowed}.chk[disabled]::before{border-style:dashed;opacity:.55}.row.done .chk[disabled]::before{opacity:.6;border-style:solid}
+select[disabled]{opacity:.65}
 label.btn{font-size:16px;font-weight:500;color:var(--blue)}
 .ini{display:none}.mb{display:none!important}
 @media(max-width:600px){
@@ -157,7 +161,6 @@ label.btn{font-size:16px;font-weight:500;color:var(--blue)}
   .filters{display:grid;grid-template-columns:1fr 1fr}.filters .seg,.filters input{grid-column:1/-1}.filters select{width:100%}
   .filters .seg{display:flex}.filters .seg button{flex:1}
   #toast{bottom:calc(90px + env(safe-area-inset-bottom))}
-  body[data-view=import] #newBtn,body[data-view=sprava] #newBtn{display:none!important}
   h1{font-size:28px}
 }
 </style><script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script></head><body>
@@ -189,7 +192,7 @@ const ST={open:'Otevřený',progress:'Rozpracovaný',done:'Splněný'};
 const VIEWS=['prehled','ukoly','informace','import','sprava'];
 const DEF={reminderDays:4,emailNotif:false};
 const S={auth:'init',authMode:'login',srv:null,user:null,me:null,email:'',loading:true,membersLoaded:false,dataSubs:false,note:'',
-  tasks:{},members:{},groups:{},cfg:{...DEF},view:'prehled',dash:'moje',scope:'moje',fStatus:'aktivni',fSource:'',fGroup:'',q:'',f:{impSplit:true},
+  tasks:{},members:{},groups:{},cfg:{...DEF},view:'prehled',dash:'moje',scope:'moje',fStatus:'aktivni',fSource:'',fGroup:'',q:'',f:{},
   importRows:[],parsing:false,creating:false,newKind:'task',gEdit:null,seenIds:null,obKey:''};
 let app,auth,fdb,unsubs=[];
 // Konfigurace pro provoz bez serverových funkcí (webová konfigurace Firebase není tajná; data chrání firestore.rules).
@@ -229,6 +232,7 @@ function inScope(t,key){if(!key)return true;if(t.assignee===key)return true;cons
   if(String(t.assignee).startsWith('g:'))return((grp(t.assignee)||{}).members||[]).some(id=>ids.has(id));return false}
 const myIds=()=>[S.me,meM().alias].filter(Boolean);
 const resolve=id=>S.members[id]?id:((Object.entries(S.members).find(([,m])=>m&&m.alias===id)||[])[0]||null);
+const canDone=t=>!!S.me&&t.assignee===S.me&&canWrite();
 const isMine=t=>t.assignee===S.me||(String(t.assignee||'').startsWith('g:')&&((grp(t.assignee)||{}).members||[]).some(x=>myIds().includes(x)));
 const tasks=()=>Object.entries(S.tasks).filter(([,t])=>t&&t.kind!=='info');
 const infos=()=>Object.entries(S.tasks).filter(([,t])=>t&&t.kind==='info').sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0));
@@ -247,7 +251,7 @@ async function del(path){try{await deleteDoc(doc(fdb,path));return true}catch(e)
 async function addTasks(list){try{for(let i=0;i<list.length;i+=400){const b=writeBatch(fdb);list.slice(i,i+400).forEach(t=>b.set(doc(fdb,'tasks',rid('t')),t));await b.commit()}return true}catch(e){console.error(e);toast(errMsg(e));return false}}
 const logE=(t,a)=>[...(t.log||[]),{t:Date.now(),by:S.me,a}].slice(-30);
 // Úkol pro skupinu: buď jeden společný, nebo samostatná kopie pro každého člena.
-function expand(t,split){if(!split||!String(t.assignee||'').startsWith('g:'))return[t];const g=grp(t.assignee);if(!g)return[t];
+function expand(t){if(!String(t.assignee||'').startsWith('g:'))return[t];const g=grp(t.assignee);if(!g)return[t];
   return[...new Set((g.members||[]).map(resolve).filter(Boolean))].map(id=>({...t,assignee:id,group:t.assignee.slice(2)}))}
 
 function notes(){
@@ -283,7 +287,7 @@ function dueTxt(t){if(!t.due)return 'bez termínu';const d=daysTo(t.due);if(t.st
 function row(id,t,showWho){
   const cls=t.status==='done'?'done':isLate(t)?'late':isSoon(t)?'soon':'';
   const meta=[showWho||String(t.assignee||'').startsWith('g:')?nm(t.assignee):'',t.group&&S.groups[t.group]?'skupina '+S.groups[t.group].name:'',SRC[t.source]||'',t.meeting||''].filter(Boolean).join(' · ');
-  return `<li class="row ${cls}"><button class="chk" data-act="toggle" data-id="${esc(id)}" aria-label="${t.status==='done'?'Znovu otevřít':'Označit jako splněný'}: ${esc(t.title)}"${canWrite()?'':' disabled'}></button><button class="rt" data-act="open" data-id="${esc(id)}"><span class="tt">${esc(t.title)}</span><span class="meta">${esc(meta)}</span></button><span class="due">${esc(dueTxt(t))}</span><span class="st st-${esc(t.status)}">${esc(ST[t.status]||'')}</span></li>`;
+  return `<li class="row ${cls}"><button class="chk" data-act="toggle" data-id="${esc(id)}" aria-label="${canDone(t)?(t.status==='done'?'Znovu otevřít':'Označit jako splněný'):'Splnit může jen řešitel'}: ${esc(t.title)}" title="${canDone(t)?'':'Splnit může jen řešitel'}"${canDone(t)?'':' disabled'}></button><button class="rt" data-act="open" data-id="${esc(id)}"><span class="tt">${esc(t.title)}</span><span class="meta">${esc(meta)}</span></button><span class="due">${esc(dueTxt(t))}</span><span class="st st-${esc(t.status)}">${esc(ST[t.status]||'')}</span></li>`;
 }
 
 function vDash(){
@@ -327,7 +331,7 @@ function listHTML(){const r=filtered();return r.length?r.map(([id,t])=>row(id,t,
 function vTasks(){
   const sc=[['moje','Moje'],['zadane','Zadané mnou'],['vse','Všechny']];
   const st=[['aktivni','Otevřené a rozpracované'],['late','Po termínu'],['soon',`Termín do ${rd()} dnů`],['done','Splněné'],['vse','Všechny stavy']];
-  return `<section class="head"><div><h1>Úkoly</h1><p class="lead hm">Kliknutím na kolečko úkol splníte, kliknutím na název otevřete detail s úpravami, předáním a historií.</p></div><button class="btn pri hm" data-act="new" data-kind="task">Nový úkol</button></section>
+  return `<section class="head"><div><h1>Úkoly</h1><p class="lead">Kliknutím na kolečko úkol splníte, kliknutím na název otevřete detail s úpravami, předáním a historií.</p></div><button class="btn pri hm" data-act="new" data-kind="task">Nový úkol</button></section>
   <div class="filters"><div class="seg" role="group" aria-label="Čí úkoly">${sc.map(([k,l])=>`<button data-act="scope" data-v="${k}" aria-pressed="${S.scope===k}">${l}</button>`).join('')}</div>
   ${S.scope==='vse'?`<select id="fGroup" aria-label="Skupina, lokalita nebo pozice">${scopeOpts(S.fGroup)}</select>`:''}
   <select id="fStatus" aria-label="Stav">${st.map(([k,l])=>`<option value="${k}"${S.fStatus===k?' selected':''}>${l}</option>`).join('')}</select>
@@ -337,7 +341,7 @@ function vTasks(){
 }
 function infoCard(id,t){return `<article class="info"><button class="rt" data-act="open" data-id="${esc(id)}"><span class="tt">${esc(t.title)}</span></button>${t.desc?`<p>${esc(t.desc)}</p>`:''}<span class="meta">${esc(nm(t.author))} · ${esc(fmtT(t.createdAt))}</span></article>`}
 function vInfo(){
-  return `<section class="head"><div><h1>Informace pro tým</h1><p class="lead">Sdělení, která nevyžadují splnění. Dotazníky a ankety dál běží v Teams.</p></div><button class="btn pri hm" data-act="new" data-kind="info">Nová informace</button></section>
+  return `<section class="head"><div><h1>Informace pro tým</h1><p class="lead">Sdělení, která nevyžadují splnění. Dotazníky a ankety dál běží v Teams.</p></div><button class="btn pri" data-act="new" data-kind="info">Nová informace</button></section>
   <div style="max-width:760px">${infos().map(([id,t])=>infoCard(id,t)).join('')||'<p class="empty">Zatím žádné informace.</p>'}</div>`;
 }
 function vImport(){
@@ -352,7 +356,7 @@ function vImport(){
   <div class="scroll"><table class="stack imp"><thead><tr><th>Vytvořit</th><th>Název</th><th>Typ</th><th>Řešitel</th><th>Termín</th></tr></thead><tbody>
   ${rows.map((r,i)=>`<tr><td><input type="checkbox" data-ir="${i}" data-k="on"${r.on?' checked':''} aria-label="Vytvořit položku ${i+1}"></td><td><input data-ir="${i}" data-k="title" value="${esc(r.title)}" aria-label="Název"></td><td><select data-ir="${i}" data-k="kind" aria-label="Typ"><option value="task"${r.kind==='task'?' selected':''}>Úkol</option><option value="info"${r.kind==='info'?' selected':''}>Informace</option></select></td><td><select data-ir="${i}" data-k="assignee" aria-label="Řešitel">${mOpts(r.assignee)}</select></td><td><input type="date" data-ir="${i}" data-k="due" value="${esc(r.due)}" aria-label="Termín"></td></tr>`).join('')}
   </tbody></table></div>
-  <label class="chkl" style="margin-top:14px"><input type="checkbox" id="impSplit" data-bind="impSplit"${f.impSplit?' checked':''}> Úkoly pro skupinu rozdělit — každý člen dostane vlastní úkol</label>
+  <p class="hint" style="margin-top:14px">Úkol přidělený skupině dostane každý její člen jako samostatný úkol.</p>
   <div class="acts"><button class="btn hot" id="impGo" data-act="createImport"${S.creating||!on?' disabled':''}>${S.creating?'Vytvářím…':`Vytvořit ${on} ${pl(on,'položku','položky','položek')}`}</button><button class="btn" data-act="clearImport">Zahodit návrh</button></div></div>`:''}`;
 }
 function vAdmin(){
@@ -411,33 +415,39 @@ function openTask(id){
   panel('Detail',`<div class="ph"><span class="kind">${info?'Informace':'Úkol'}${t.source?' · '+esc(SRC[t.source]||''):''}</span>${xBtn}</div>
   <label>Název<input id="dT" value="${esc(t.title)}"></label>
   <label style="margin-top:12px">Popis<textarea id="dD" rows="4">${esc(t.desc||'')}</textarea></label>
-  ${info?'':`<div class="grid2"><label>Termín<input type="date" id="dDue" value="${esc(t.due||'')}"></label><label>Stav<select id="dSt">${Object.entries(ST).map(([k,v])=>`<option value="${k}"${k===t.status?' selected':''}>${v}</option>`).join('')}</select></label><label>Zdroj<select id="dSrc">${sOpts(t.source)}</select></label></div>`}
+  ${info?'':`<div class="grid2"><label>Termín<input type="date" id="dDue" value="${esc(t.due||'')}"></label><label>Stav<select id="dSt"${canDone(t)?'':' disabled title="Stav mění jen řešitel"'}>${Object.entries(ST).map(([k,v])=>`<option value="${k}"${k===t.status?' selected':''}>${v}</option>`).join('')}</select></label><label>Zdroj<select id="dSrc">${sOpts(t.source)}</select></label></div>`}
   <div class="acts"><button class="btn pri" data-act="saveTask" data-id="${esc(id)}">Uložit změny</button>${isAdmin()?`<button class="btn danger" data-act="delTask" data-id="${esc(id)}">Smazat</button>`:''}</div>
-  ${info?'':`<h3>Řešitel: ${esc(nm(t.assignee))}</h3>${g?`<p class="hint">Společný úkol skupiny — splnit ho může kdokoli z členů: ${esc((g.members||[]).map(x=>nm(x)).join(', '))}</p>`:''}
-  <div class="deleg"><select id="dTo" aria-label="Předat komu">${mOpts(t.assignee)}</select><input id="dNote" placeholder="Poznámka k předání" aria-label="Poznámka k předání"><button class="btn" data-act="delegate" data-id="${esc(id)}">Předat</button></div>`}
+  ${info?'':`<h3>Řešitel: ${esc(nm(t.assignee))}</h3>${canDone(t)?'':`<p class="hint">Úkol může označit jako splněný jen řešitel${g?' — tento starší úkol je přidělený celé skupině, předejte ho konkrétní osobě':''}.</p>`}
+  <div class="deleg"><select id="dTo" aria-label="Předat komu">${mOpts(t.assignee,false)}</select><input id="dNote" placeholder="Poznámka k předání" aria-label="Poznámka k předání"><button class="btn" data-act="delegate" data-id="${esc(id)}">Předat</button></div>`}
   <h3>Historie</h3><ol class="log">${(t.log||[]).slice().reverse().map(l=>`<li><time>${esc(fmtT(l.t))}</time>${esc(nm(l.by))}: ${esc(l.a)}</li>`).join('')||'<li>Bez záznamů</li>'}</ol>
   <p class="hint">Zadal(a) ${esc(nm(t.author))}, ${esc(fmtT(t.createdAt))}${t.meeting?` · z porady „${esc(t.meeting)}“`:''}${t.group&&S.groups[t.group]?` · rozděleno ze skupiny ${esc(S.groups[t.group].name)}`:''}</p>`);
   $('.panel .x').focus();
 }
 function openNew(kind){
-  S.newKind=kind||'task';const k=S.newKind;
+  S.newKind=kind||'task';const k=S.newKind;S.nSel=new Set([S.me]);
   panel('Nový záznam',`<div class="ph"><h2 style="margin:0">Nový záznam</h2>${xBtn}</div>
   <div class="seg" role="group" aria-label="Typ"><button data-act="nk" data-v="task" aria-pressed="${k==='task'}">Úkol ke splnění</button><button data-act="nk" data-v="info" aria-pressed="${k==='info'}">Jen informace</button></div>
   <label style="margin-top:16px">Název<input id="nT" maxlength="160"></label>
   <label style="margin-top:12px">Popis<textarea id="nD" rows="4"></textarea></label>
-  <div id="nTF"${k==='info'?' hidden':''}><div class="grid2"><label>Řešitel — člověk nebo skupina<select id="nA">${mOpts(S.me)}</select></label><label>Termín<input type="date" id="nDue" value="${plus(7)}"></label><label>Zdroj<select id="nS">${sOpts('rucne')}</select></label></div>
-  <label class="chkl" id="nSplitW" hidden><input type="checkbox" id="nSplit" checked> Každý člen skupiny dostane vlastní úkol (jinak jeden společný)</label></div>
+  <div id="nTF"${k==='info'?' hidden':''}><label style="margin-top:12px">Řešitelé</label><div id="nChips" class="chips"></div>
+  <select id="nAdd" aria-label="Přidat řešitele"><option value="">+ Přidat osobu nebo celou skupinu…</option>${addOpts()}</select>
+  <p class="hint" id="nCnt"></p>
+  <div class="grid2"><label>Termín<input type="date" id="nDue" value="${plus(7)}"></label><label>Zdroj<select id="nS">${sOpts('rucne')}</select></label></div></div>
   <div class="acts"><button class="btn pri" data-act="create">Vytvořit</button><button class="btn" data-act="close">Zrušit</button></div>`);
-  $('#nT').focus();
+  renderChips();$('#nT').focus();
 }
+function addOpts(){return (gList().length?`<optgroup label="Skupiny (přidá všechny členy)">${gList().map(([id,g])=>`<option value="g:${esc(id)}">${esc(g.name)} (${(g.members||[]).length})</option>`).join('')}</optgroup>`:'')+
+  `<optgroup label="Lidé">${mList().map(([id,m])=>`<option value="${esc(id)}">${esc(m.name)}${id===S.me?' (já)':''}${m.location?' – '+esc(m.location):''}</option>`).join('')}</optgroup>`}
+function renderChips(){const c=$('#nChips');if(!c)return;const ids=[...S.nSel];
+  c.innerHTML=ids.map(id=>`<span class="chip">${esc(nm(id))}<button data-act="nRm" data-id="${esc(id)}" aria-label="Odebrat ${esc(nm(id))}">×</button></span>`).join('')||'<span class="hint">Nikdo — úkol zůstane nepřiřazený.</span>';
+  $('#nCnt').textContent=ids.length>1?`Vytvoří se ${ids.length} samostatné úkoly — každý řešitel splní svůj.`.replace('samostatné úkoly',ids.length>=5?'samostatných úkolů':'samostatné úkoly'):''}
 async function create(){
   const title=$('#nT').value.trim();if(!title){toast('Vyplňte název');$('#nT').focus();return}
   const k=S.newKind,now=Date.now();
   const t={kind:k,title,desc:$('#nD').value.trim(),author:S.me,createdAt:now,updatedAt:now,source:k==='info'?'':$('#nS').value,log:[{t:now,by:S.me,a:k==='info'?'informace zveřejněna':'úkol vytvořen'}]};
-  if(k==='task')Object.assign(t,{assignee:$('#nA').value,due:$('#nDue').value,status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});
-  const list=k==='task'?expand(t,$('#nSplit').checked):[t];
-  if(!list.length){toast('Skupina nemá žádné členy');return}
-  if(await addTasks(list)){close();toast(k==='info'?'Informace zveřejněna':list.length>1?`Vytvořeno ${list.length} úkolů pro členy skupiny`:'Úkol vytvořen')}
+  if(k==='task')Object.assign(t,{assignee:'',due:$('#nDue').value,status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});
+  const ids=[...S.nSel],list=k==='task'?(ids.length?ids.map(id=>({...t,assignee:id})):[t]):[t];
+  if(await addTasks(list)){close();toast(k==='info'?'Informace zveřejněna':list.length>1?`Vytvořeno: ${list.length} ${pl(list.length,'úkol','úkoly','úkolů')} — každý řešitel má svůj`:'Úkol vytvořen')}
 }
 async function saveTask(id){
   const t=S.tasks[id];if(!t)return;const info=t.kind==='info',title=$('#dT').value.trim(),desc=$('#dD').value.trim();
@@ -446,7 +456,7 @@ async function saveTask(id){
   if(title!==t.title){p.title=title;ch.push('upraven název')}if(desc!==(t.desc||'')){p.desc=desc;ch.push('upraven popis')}
   if(!info){const due=$('#dDue').value,st=$('#dSt').value,src=$('#dSrc').value;
     if(due!==(t.due||'')){p.due=due;ch.push(due?'termín '+fmt(due):'termín zrušen')}
-    if(st!==t.status){p.status=st;p.doneAt=st==='done'?Date.now():0;ch.push('stav: '+ST[st])}
+    if(st!==t.status&&canDone(t)){p.status=st;p.doneAt=st==='done'?Date.now():0;ch.push('stav: '+ST[st])}
     if(src!==t.source){p.source=src;ch.push('zdroj: '+SRC[src])}}
   if(!ch.length){close();return}
   p.log=logE(t,ch.join(', '));if(await write('tasks/'+id,p,true)){close();toast('Uloženo')}
@@ -457,7 +467,7 @@ async function delegate(id){
   if(await write('tasks/'+id,{assignee:to,assignedAt:Date.now(),assignedBy:S.me,updatedAt:Date.now(),log:logE(t,`předáno: ${nm(t.assignee)} → ${nm(to)}${note?' — '+note:''}`)},true)){close();toast('Úkol předán: '+nm(to))}
 }
 async function toggle(id){
-  const t=S.tasks[id];if(!t)return;const st=t.status==='done'?'open':'done';
+  const t=S.tasks[id];if(!t)return;if(!canDone(t)){toast('Úkol může označit jako splněný jen řešitel.');return}const st=t.status==='done'?'open':'done';
   await write('tasks/'+id,{status:st,doneAt:st==='done'?Date.now():0,updatedAt:Date.now(),log:logE(t,st==='done'?'označeno jako splněné':'znovu otevřeno')},true);
 }
 function openGroup(id){
@@ -598,7 +608,7 @@ async function createImport(){
   const rows=S.importRows.filter(r=>r.on&&r.title.trim());if(!rows.length)return;S.creating=true;render();
   const meeting=(S.f.impName||'').trim()||'Porada '+fmt(S.f.impDate||today()),now=Date.now();
   const list=rows.flatMap(r=>{const t={kind:r.kind,title:r.title.trim(),desc:r.desc||'',author:S.me,createdAt:now,updatedAt:now,source:'porada',meeting,log:[{t:now,by:S.me,a:'vytvořeno importem z porady'}]};
-    if(r.kind==='task'){Object.assign(t,{assignee:r.assignee||'',due:r.due||'',status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});return expand(t,!!S.f.impSplit)}return[t]});
+    if(r.kind==='task'){Object.assign(t,{assignee:r.assignee||'',due:r.due||'',status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});return expand(t)}return[t]});
   const ok=await addTasks(list);S.creating=false;
   if(ok){S.importRows=[];S.f.impText='';S.f.impName='';toast(`Vytvořeno ${list.length} ${pl(list.length,'položka','položky','položek')} z porady „${meeting}“`);S.scope='vse';S.fGroup='';S.fStatus='aktivni';location.hash='ukoly'}
   render();
@@ -632,7 +642,8 @@ document.addEventListener('click',async e=>{
     case 'seen':await write('members/'+S.me,{seenAt:Date.now()},true);$('#bellP').innerHTML=bellHTML();break;
     case 'open':openTask(id);break;
     case 'close':close();break;
-    case 'new':openNew(b.dataset.kind);break;
+    case 'nRm':S.nSel.delete(id);renderChips();break;
+    case 'new':openNew(b.id==='newBtn'&&S.view==='informace'?'info':b.dataset.kind);break;
     case 'nk':S.newKind=b.dataset.v;b.parentNode.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#nTF').hidden=S.newKind==='info';break;
     case 'create':await busy(create);break;
     case 'saveTask':await busy(()=>saveTask(id));break;
@@ -686,7 +697,7 @@ document.addEventListener('change',async e=>{
   if(el.id==='fStatus'){S.fStatus=el.value;$('#list').innerHTML=listHTML()}
   else if(el.id==='fSource'){S.fSource=el.value;$('#list').innerHTML=listHTML()}
   else if(el.id==='fGroup'){S.fGroup=el.value;render()}
-  else if(el.id==='nA'){$('#nSplitW').hidden=!el.value.startsWith('g:')}
+  else if(el.id==='nAdd'&&el.value){const v=el.value;if(v.startsWith('g:'))((grp(v)||{}).members||[]).map(resolve).filter(Boolean).forEach(x=>S.nSel.add(x));else S.nSel.add(v);el.value='';renderChips()}
   else if(el.dataset.gm&&S.gEdit){el.checked?S.gEdit.members.add(el.dataset.gm):S.gEdit.members.delete(el.dataset.gm);gCount()}
   else if(el.dataset.bind){S.f[el.dataset.bind]=el.type==='checkbox'?el.checked:el.value}
   else if(el.dataset.ir!=null){const r=S.importRows[+el.dataset.ir];if(r)r[el.dataset.k]=el.type==='checkbox'?el.checked:el.value}
@@ -698,7 +709,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('#layer').hid
 window.addEventListener('hashchange',route);
 
 function handleUser(u){
-  stopSubs();S.user=u;S.obKey='';Object.assign(S,{dash:'moje',scope:'moje',fGroup:'',fStatus:'aktivni',fSource:'',q:'',importRows:[],f:{impSplit:true}});if(u&&location.hash!=='#prehled')location.hash='prehled';
+  stopSubs();S.user=u;S.obKey='';Object.assign(S,{dash:'moje',scope:'moje',fGroup:'',fStatus:'aktivni',fSource:'',q:'',importRows:[],f:{}});if(u&&location.hash!=='#prehled')location.hash='prehled';
   if(!u){S.auth='signedout';S.me=null;render();return}
   if(!domainOk(u.email)){S.auth='baddomain';render();return}
   if(!u.emailVerified){S.auth='unverified';render();return}
