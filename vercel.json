@@ -1,7 +1,4 @@
 {
-  "functions": {
-    "api/parse.js": { "maxDuration": 60 }
-  },
   "headers": [
     {
       "source": "/(.*)",
