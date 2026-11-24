@@ -137,23 +137,26 @@ td input{min-width:8em}
 .filters select{max-width:100%}
 .btn.danger{border-color:var(--pinkt);color:var(--pinkt)}
 label.btn{font-size:16px;font-weight:500;color:var(--blue)}
-.ini{display:none}
+.ini{display:none}.mb{display:none!important}
 @media(max-width:600px){
   .top{flex-wrap:nowrap;gap:8px;padding:8px 12px}
   .brand{flex:1 1 auto;gap:8px;font-size:15px}.brand img{height:22px}.brand .sep{height:22px}
   .lg,.hm{display:none!important}
   .right{gap:6px}
-  nav{position:fixed;left:0;right:0;bottom:0;z-index:35;background:var(--card);border-top:1px solid var(--line);justify-content:space-around;padding:4px 4px calc(4px + env(safe-area-inset-bottom));gap:0;flex:none}
-  nav a{flex:1 1 0;justify-content:center;padding:0 4px;font-size:14px;min-height:48px;border-radius:10px}
-  #newBtn{position:fixed;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:36;min-height:56px;padding:0 20px;border-radius:28px;box-shadow:0 6px 20px #005aa855;font-size:16px}
+  nav{display:none;flex:none}
+  nav.open{display:flex;flex-direction:column;position:fixed;top:62px;left:10px;right:10px;z-index:40;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px #0b1a2a40;padding:6px;gap:2px;max-height:calc(100vh - 80px);overflow:auto}
+  nav.open a{justify-content:flex-start;min-height:50px;padding:0 16px;font-size:17px;border-radius:10px}
+  nav.open .lg{display:inline!important}
+  .mb{display:grid!important}
+  #newBtn{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:36;min-height:56px;padding:0 20px;border-radius:28px;box-shadow:0 6px 20px #005aa855;font-size:16px}
   .me{padding:0}.me #meName,.me small{display:none}
   .ini{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--blue);color:var(--onblue);font-weight:600;font-size:15px}
   .pop{position:fixed;left:10px;right:10px;top:60px;width:auto}
-  .wrap{padding:18px 14px calc(150px + env(safe-area-inset-bottom))}
+  .wrap{padding:18px 14px calc(100px + env(safe-area-inset-bottom))}
   .head{margin-bottom:16px}
   .filters{display:grid;grid-template-columns:1fr 1fr}.filters .seg,.filters input{grid-column:1/-1}.filters select{width:100%}
   .filters .seg{display:flex}.filters .seg button{flex:1}
-  #toast{bottom:calc(140px + env(safe-area-inset-bottom))}
+  #toast{bottom:calc(90px + env(safe-area-inset-bottom))}
   body[data-view=import] #newBtn,body[data-view=sprava] #newBtn{display:none!important}
   h1{font-size:28px}
 }
@@ -165,6 +168,7 @@ label.btn{font-size:16px;font-weight:500;color:var(--blue)}
     <button id="newBtn" class="btn hot" data-act="new" data-kind="task" hidden>+ Nový</button>
     <div class="bellw"><button id="bell" class="ib" data-act="bell" aria-label="Upozornění" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span id="bellN" class="bn" hidden></span></button><div id="bellP" class="pop" hidden></div></div>
     <button class="me" data-act="profile" aria-label="Můj profil"><span id="meIni" class="ini" aria-hidden="true"></span><span id="meName">…</span><small id="meRole"></small></button>
+    <button id="menuBtn" class="ib mb" data-act="menu" aria-label="Menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </div>
 </header>
 <p id="banner" hidden></p>
@@ -371,9 +375,9 @@ function vAdmin(){
   <div class="sec"><h2>Export</h2><p class="hint">Všechny úkoly a informace jako CSV (oddělovač středník) do schránky — vložíte přímo do Excelu.</p><div class="acts"><button class="btn" data-act="csv">Kopírovat CSV</button></div></div>`;
 }
 function renderTop(){
-  const ok=canWrite(),n=notes().length,links=[['prehled','Přehled'],['ukoly','Úkoly'],['informace','Informace'],['import','Import<span class="lg"> z porady</span>']];if(isAdmin())links.push(['sprava','Správa']);
+  const ok=canWrite(),n=notes().length,links=[['prehled','Přehled'],['ukoly','Úkoly'],['informace','Informace'],['import','Import<span class="lg">&nbsp;z porady</span>']];if(isAdmin())links.push(['sprava','Správa']);
   $('#nav').innerHTML=ok?links.map(([k,l])=>`<a href="#${k}"${S.view===k?' aria-current="page"':''}>${l}</a>`).join(''):'';
-  const b=$('#bellN');b.textContent=n>99?'99+':String(n);b.hidden=!n;$('#bell').setAttribute('aria-label',`Upozornění: ${n}`);$('#bell').hidden=!ok;
+  const b=$('#bellN');b.textContent=n>99?'99+':String(n);b.hidden=!n;$('#bell').setAttribute('aria-label',`Upozornění: ${n}`);$('#bell').hidden=!ok;$('#menuBtn').hidden=!ok;
   $('#meName').textContent=meM().name||'';$('#meIni').textContent=(meM().name||'').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();$('#meRole').textContent=ok?(isAdmin()?'Administrátor':'Uživatel')+(meM().location?' · '+meM().location:''):'';$('.me').hidden=!ok;
   $('#banner').textContent=S.note||'';$('#banner').hidden=!S.note;$('#newBtn').hidden=!ok;
   $('#dlLoc').innerHTML=uniq('location').map(v=>`<option value="${esc(v)}">`).join('');$('#dlPos').innerHTML=uniq('position').map(v=>`<option value="${esc(v)}">`).join('');
@@ -395,6 +399,7 @@ function bellHTML(){
   return `<div class="poph"><b>Upozornění</b>${n.some(x=>x.type==='new'||x.type==='info')?'<button class="lnk" data-act="seen">Označit nové jako přečtené</button>':''}</div>`+
   (n.length?`<ul>${n.map(x=>`<li><button data-act="open" data-id="${esc(x.id)}"><span class="nt ${x.type==='info'?'inf':x.type}">${lab[x.type]}${when(x)}</span>${esc(x.t.title)}</button></li>`).join('')}</ul>`:`<p class="hint" style="padding:0 10px 10px">Nic nového. Na blížící se termín upozorníme ${rd()} ${pl(rd(),'den','dny','dní')} předem.</p>`);
 }
+function closeMenu(){$('#nav').classList.remove('open');$('#menuBtn').setAttribute('aria-expanded','false')}
 function closeBell(){$('#bellP').hidden=true;$('#bell').setAttribute('aria-expanded','false')}
 function close(){$('#layer').hidden=true;$('#layer').innerHTML='';S.gEdit=null}
 function panel(label,inner){closeBell();$('#layer').innerHTML=`<div class="ov" data-act="close"></div><aside class="panel" role="dialog" aria-modal="true" aria-label="${esc(label)}">${inner}</aside>`;$('#layer').hidden=false}
@@ -611,17 +616,19 @@ function csv(){
   const rows=[['Typ','Název','Popis','Řešitel','Lokalita řešitele','Termín','Stav','Zdroj','Porada','Zadal(a)','Vytvořeno']].concat(Object.values(S.tasks).filter(Boolean).map(t=>[t.kind==='info'?'Informace':'Úkol',t.title,t.desc,t.kind==='info'?'':nm(t.assignee),(S.members[t.assignee]||{}).location||'',fmt(t.due),ST[t.status]||'',SRC[t.source]||'',t.meeting,nm(t.author),fmtT(t.createdAt)]));
   navigator.clipboard.writeText(rows.map(r=>r.map(q).join(';')).join('\r\n')).then(()=>toast(`Zkopírováno ${rows.length-1} řádků`)).catch(()=>toast('Prohlížeč nepovolil kopírování do schránky.'));
 }
-function route(){const h=location.hash.slice(1);S.view=VIEWS.includes(h)?h:'prehled';closeBell();render();window.scrollTo(0,0)}
+function route(){const h=location.hash.slice(1);S.view=VIEWS.includes(h)?h:'prehled';closeBell();closeMenu();render();window.scrollTo(0,0)}
 
 document.addEventListener('submit',e=>{if(e.target.id==='loginF'){e.preventDefault();doLogin()}});
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');
-  if(!b){if(!$('#bellP').hidden&&!e.target.closest('.bellw'))closeBell();return}
+  if(!b){if(!$('#bellP').hidden&&!e.target.closest('.bellw'))closeBell();if(!e.target.closest('#nav')||e.target.closest('#nav a'))closeMenu();return}
+  if(b.dataset.act!=='menu')closeMenu();
   const a=b.dataset.act,id=b.dataset.id;
   if(a!=='bell'&&!b.closest('#bellP'))closeBell();
   const busy=async fn=>{b.disabled=true;try{await fn()}finally{b.disabled=false}};
   switch(a){
-    case 'bell':{const p=$('#bellP');p.hidden=!p.hidden;b.setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden)p.innerHTML=bellHTML();break}
+    case 'menu':{const n=$('#nav'),o=!n.classList.contains('open');closeBell();n.classList.toggle('open',o);b.setAttribute('aria-expanded',String(o));break}
+    case 'bell':{closeMenu();const p=$('#bellP');p.hidden=!p.hidden;b.setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden)p.innerHTML=bellHTML();break}
     case 'seen':await write('members/'+S.me,{seenAt:Date.now()},true);$('#bellP').innerHTML=bellHTML();break;
     case 'open':openTask(id);break;
     case 'close':close();break;
@@ -687,7 +694,7 @@ document.addEventListener('change',async e=>{
   else if(el.dataset.role){const id=el.dataset.role;if(await write('members/'+id,{role:el.value},true))toast(`${nm(id)}: ${el.value==='admin'?'administrátor':'uživatel'}`)}
   else if(el.id==='impFile'&&el.files[0]){const f=el.files[0];try{S.f.impText=await readFile(f);if(!S.f.impName)S.f.impName=f.name.replace(/\.[^.]+$/,'');S.importRows=[];render();toast('Soubor načten: '+f.name)}catch(err){toast('Soubor se nepodařilo přečíst.')}}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('#layer').hidden)close();closeBell()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('#layer').hidden)close();closeBell();closeMenu()}});
 window.addEventListener('hashchange',route);
 
 function handleUser(u){
