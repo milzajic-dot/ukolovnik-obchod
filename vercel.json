@@ -2,8 +2,20 @@
   "functions": {
     "api/parse.js": {
       "maxDuration": 60
+    },
+    "api/notify.js": {
+      "maxDuration": 60
+    },
+    "api/cron-reminders.js": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron-reminders",
+      "schedule": "0 5 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

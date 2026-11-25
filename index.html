@@ -144,7 +144,8 @@ select[disabled]{opacity:.65}
 .who{list-style:none;margin:0;padding:0}.who li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
 .who .wi{width:22px;height:22px;border-radius:50%;border:2px dashed var(--mut);display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
 .who li.ok .wi{background:var(--blue);border:2px solid var(--blue)}.who .lnk{text-align:left;padding:8px 0;font-size:15px;color:var(--ink);text-decoration:none;font-weight:500}
-.who li.me .lnk{font-weight:700}.who .ws{font-size:13px;color:var(--mut);text-align:right;white-space:nowrap}.who li.ok .ws{color:var(--blue)}
+.who li.rm{grid-template-columns:24px minmax(0,1fr) auto 40px}.wx{width:40px;height:40px;border:0;background:none;border-radius:8px;cursor:pointer;font-size:20px;color:var(--mut)}.wx:hover{background:var(--bg);color:var(--pinkt)}.wx.arm{width:auto;padding:0 8px;font-size:13px;font-weight:600;color:var(--pinkt)}
+.addas{margin-top:10px}.who li.me .lnk{font-weight:700}.who .ws{font-size:13px;color:var(--mut);text-align:right;white-space:nowrap}.who li.ok .ws{color:var(--blue)}
 label.btn{font-size:16px;font-weight:500;color:var(--blue)}
 .ini{display:none}.mb{display:none!important}
 @media(max-width:600px){
@@ -258,7 +259,11 @@ function authErr(e){const c=e&&e.code||'';
   return({'auth/invalid-credential':'Nesprávný e-mail nebo heslo.','auth/wrong-password':'Nesprávný e-mail nebo heslo.','auth/user-not-found':'Účet s tímto e-mailem neexistuje.','auth/email-already-in-use':'Účet s tímto e-mailem už existuje — přihlaste se.','auth/weak-password':'Heslo musí mít aspoň 8 znaků.','auth/too-many-requests':'Příliš mnoho pokusů, zkuste to za chvíli.','auth/network-request-failed':'Chyba připojení k internetu.','auth/invalid-email':'Neplatný e-mail.','auth/operation-not-allowed':'Přihlášení e-mailem a heslem není ve Firebase zapnuté.'})[c]||'Přihlášení se nepovedlo ('+c+').'}
 async function write(path,data,merge){try{const r=doc(fdb,path);if(merge)await updateDoc(r,data);else await setDoc(r,data);return true}catch(e){console.error(e);toast(errMsg(e));return false}}
 async function del(path){try{await deleteDoc(doc(fdb,path));return true}catch(e){console.error(e);toast(errMsg(e));return false}}
-async function addTasks(list){try{for(let i=0;i<list.length;i+=400){const b=writeBatch(fdb);list.slice(i,i+400).forEach(t=>b.set(doc(fdb,'tasks',rid('t')),t));await b.commit()}return true}catch(e){console.error(e);toast(errMsg(e));return false}}
+async function addTasks(list){try{const ids=[];for(let i=0;i<list.length;i+=400){const b=writeBatch(fdb);list.slice(i,i+400).forEach(t=>{const id=rid('t');ids.push(id);b.set(doc(fdb,'tasks',id),t)});await b.commit()}return ids}catch(e){console.error(e);toast(errMsg(e));return false}}
+// E-mail řešitelům (server ho pošle jen ostatním, ne zadavateli). Chyba e-mailu nesmí zastavit práci v aplikaci.
+async function notify(ids,reason){if(!ids||!ids.length||!S.srv||!S.srv.mail||!auth||!auth.currentUser)return;
+  try{const tok=await auth.currentUser.getIdToken();const r=await fetch('/api/notify',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({ids,reason:reason||'new'})});
+    if(r.ok){const j=await r.json();if(j.sent)toast(`E-mail odeslán ${j.sent} ${pl(j.sent,'řešiteli','řešitelům','řešitelům')}`)}}catch(e){console.error(e)}}
 const logE=(t,a)=>[...(t.log||[]),{t:Date.now(),by:S.me,a}].slice(-30);
 // Úkol pro skupinu: buď jeden společný, nebo samostatná kopie pro každého člena.
 function expand(t){if(!String(t.assignee||'').startsWith('g:'))return[t];const g=grp(t.assignee);if(!g)return[t];
@@ -384,8 +389,9 @@ function vAdmin(){
   ${gs.length?`<ul class="list">${gs.map(([id,g])=>`<li class="row grow"><span></span><button class="rt" data-act="group" data-id="${esc(id)}"><span class="tt">${esc(g.name)}</span><span class="meta">${(g.members||[]).length} ${pl((g.members||[]).length,'člen','členové','členů')}${g.members&&g.members.length?': '+esc(g.members.slice(0,6).map(x=>nm(x)).join(', '))+(g.members.length>6?'…':''):''}</span></button><span></span><span></span></li>`).join('')}</ul>`:'<p class="empty">Zatím žádné skupiny.</p>'}
   <div class="acts"><button class="btn pri" data-act="group">Nová skupina</button></div></div>
   <div class="sec"><h2>Upozornění</h2><div class="grid2"><label>Upozornit před termínem (počet dní)<input id="cfgDays" type="number" min="1" max="30" data-bind="cfgDays" value="${esc(f.cfgDays??S.cfg.reminderDays)}"></label></div>
-  <label class="chkl"><input type="checkbox" id="cfgMail" data-bind="cfgMail"${(f.cfgMail??S.cfg.emailNotif)?' checked':''}> Posílat upozornění také e-mailem</label>
-  <p class="hint">Fungují upozornění ve zvonečku, odznak s počtem na ikoně aplikace a upozornění prohlížeče. Odesílání e-mailů zatím neprobíhá — volba se uloží pro budoucí napojení na firemní poštu.</p>
+  <label class="chkl"><input type="checkbox" id="cfgMail" data-bind="cfgMail"${(f.cfgMail??(S.cfg.emails!==false))?' checked':''}> Posílat e-maily řešitelům</label>
+  <p class="hint">E-mail dostane řešitel při novém nebo předaném úkolu a 3 pracovní dny před termínem, pokud úkol ještě nesplnil (české svátky se nepočítají jako pracovní dny). Zvoneček v aplikaci upozorňuje podle počtu dní výše.</p>
+  <p class="hint"><b>Stav e-mailů:</b> ${S.srv&&S.srv.mail?'odesílání je nastavené':'odesílání zatím není nastavené (chybí přístup k poštovnímu serveru)'} · ${S.srv&&S.srv.reminders?'denní připomínky běží':'denní připomínky zatím nejsou zapnuté'}.</p>
   <div class="acts"><button class="btn pri" data-act="saveCfg">Uložit nastavení</button></div></div>
   <div class="sec"><h2>Export</h2><p class="hint">Všechny úkoly a informace jako CSV (oddělovač středník) do schránky — vložíte přímo do Excelu.</p><div class="acts"><button class="btn" data-act="csv">Kopírovat CSV</button></div></div>`;
 }
@@ -420,12 +426,35 @@ function close(){$('#layer').hidden=true;$('#layer').innerHTML='';S.gEdit=null}
 function panel(label,inner){closeBell();$('#layer').innerHTML=`<div class="ov" data-act="close"></div><aside class="panel" role="dialog" aria-modal="true" aria-label="${esc(label)}">${inner}</aside>`;$('#layer').hidden=false}
 const xBtn='<button class="x" data-act="close" aria-label="Zavřít">×</button>';
 
-function whoDone(id,t){const b=batchOf(t);if(b.length<2)return'';
-  const done=b.filter(([,x])=>x.status==='done').length;
+const canManage=t=>canWrite()&&(isAdmin()||t.author===S.me);
+function whoDone(id,t){const b=batchOf(t),man=canManage(t);
+  const done=b.filter(([,x])=>x.status==='done').length,multi=b.length>1;
   const rows=b.slice().sort((a,c)=>(a[1].status==='done'?0:1)-(c[1].status==='done'?0:1)||(a[1].doneAt||0)-(c[1].doneAt||0)||nm(a[1].assignee).localeCompare(nm(c[1].assignee),'cs'));
-  return `<h3>Kdo úkol splnil <span class="hint">(${done} z ${b.length})</span></h3>
-  <div class="prog" role="img" aria-label="Splněno ${done} z ${b.length}"><i style="width:${done/b.length*100}%"></i></div>
-  <ul class="who">${rows.map(([xid,x])=>`<li class="${x.status==='done'?'ok':''}${xid===id?' me':''}"><span class="wi" aria-hidden="true">${x.status==='done'?'✓':''}</span><button class="lnk" data-act="open" data-id="${esc(xid)}">${esc(nm(x.assignee))}</button><span class="ws">${x.status==='done'?'splněno '+esc(fmtT(x.doneAt)):esc(ST[x.status]||'')}${x.status!=='done'&&isLate(x)?' · po termínu':''}</span></li>`).join('')}</ul>`}
+  const have=new Set(b.map(([,x])=>x.assignee));
+  const addable=mList().filter(([mid])=>!have.has(mid));
+  return `<h3>${multi?`Řešitelé a kdo úkol splnil <span class="hint">(${done} z ${b.length})</span>`:'Řešitelé'}</h3>
+  ${multi?`<div class="prog" role="img" aria-label="Splněno ${done} z ${b.length}"><i style="width:${done/b.length*100}%"></i></div>`:''}
+  <ul class="who">${rows.map(([xid,x])=>`<li class="${x.status==='done'?'ok':''}${xid===id?' me':''}${man&&multi?' rm':''}"><span class="wi" aria-hidden="true">${x.status==='done'?'✓':''}</span><button class="lnk" data-act="open" data-id="${esc(xid)}">${esc(nm(x.assignee))}</button><span class="ws">${x.status==='done'?'splněno '+esc(fmtT(x.doneAt)):esc(ST[x.status]||'')}${x.status!=='done'&&isLate(x)?' · po termínu':''}</span>${man&&multi?`<button class="wx" data-act="rmAs" data-id="${esc(xid)}" data-of="${esc(id)}" aria-label="Odebrat řešitele ${esc(nm(x.assignee))}" title="Odebrat řešitele">×</button>`:''}</li>`).join('')}</ul>
+  ${man?`<div class="addas"><select id="dAdd" data-of="${esc(id)}" aria-label="Přidat řešitele"><option value="">+ Přidat řešitele nebo skupinu…</option>${gList().length?`<optgroup label="Skupiny (přidá chybějící členy)">${gList().map(([gid,g])=>`<option value="g:${esc(gid)}">${esc(g.name)}</option>`).join('')}</optgroup>`:''}${addable.length?`<optgroup label="Lidé">${addable.map(([mid,m])=>`<option value="${esc(mid)}">${esc(m.name)}${m.location?' – '+esc(m.location):''}</option>`).join('')}</optgroup>`:''}</select></div>
+  <p class="hint">Nový řešitel dostane vlastní kopii úkolu${S.srv&&S.srv.mail?' a e-mail':''}. Odebráním se jeho kopie úkolu smaže.</p>`:''}`}
+// Přidání řešitelů k již zveřejněnému úkolu: každý dostane kopii se stejnou dávkou.
+async function addAssignees(id,val){
+  const t=S.tasks[id];if(!t||!canManage(t))return;const b=batchOf(t),have=new Set(b.map(([,x])=>x.assignee));
+  const want=(val.startsWith('g:')?((grp(val)||{}).members||[]).map(resolve).filter(Boolean):[val]).filter(x=>!have.has(x));
+  if(!want.length){toast('Všichni vybraní už úkol mají.');return}
+  let batch=t.batch;
+  if(!batch){batch=rid('b');for(const [xid] of b){if(!await write('tasks/'+xid,{batch},true))return}}
+  const now=Date.now(),base={kind:'task',title:t.title,desc:t.desc||'',author:t.author,createdAt:t.createdAt,source:t.source||'',meeting:t.meeting||'',due:t.due||'',batch};
+  const list=want.map(a=>({...base,assignee:a,status:'open',doneAt:0,assignedAt:now,assignedBy:S.me,updatedAt:now,log:[{t:now,by:S.me,a:'přidán jako řešitel'}]}));
+  const ids=await addTasks(list);if(!ids)return;
+  toast(`Přidáno: ${want.map(nm).join(', ')}`);notify(ids);
+  await new Promise(r=>setTimeout(r,80));openTask(id);
+}
+async function removeAssignee(xid,of){
+  const x=S.tasks[xid];if(!x||!canManage(x))return;if(batchOf(x).length<2){toast('Úkol musí mít aspoň jednoho řešitele — použijte Předat.');return}
+  const back=xid===of?batchOf(x).map(([i])=>i).find(i=>i!==xid):of;
+  if(await del('tasks/'+xid)){toast('Řešitel odebrán: '+nm(x.assignee));await new Promise(r=>setTimeout(r,80));openTask(back)}
+}
 function openTask(id){
   const t=S.tasks[id];if(!t)return;const info=t.kind==='info';
   const g=String(t.assignee||'').startsWith('g:')?grp(t.assignee):null;
@@ -465,7 +494,7 @@ async function create(){
   const t={kind:k,title,desc:$('#nD').value.trim(),author:S.me,createdAt:now,updatedAt:now,source:k==='info'?'':$('#nS').value,log:[{t:now,by:S.me,a:k==='info'?'informace zveřejněna':'úkol vytvořen'}]};
   if(k==='task')Object.assign(t,{assignee:'',due:$('#nDue').value,status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});
   const ids=[...S.nSel],batch=rid('b'),list=k==='task'?(ids.length?ids.map(id=>({...t,assignee:id,batch})):[t]):[t];
-  if(await addTasks(list)){close();toast(k==='info'?'Informace zveřejněna':list.length>1?`Vytvořeno: ${list.length} ${pl(list.length,'úkol','úkoly','úkolů')} — každý řešitel má svůj`:'Úkol vytvořen')}
+  const nids=await addTasks(list);if(nids){close();if(k==='task')notify(nids);toast(k==='info'?'Informace zveřejněna':list.length>1?`Vytvořeno: ${list.length} ${pl(list.length,'úkol','úkoly','úkolů')} — každý řešitel má svůj`:'Úkol vytvořen')}
 }
 async function saveTask(id){
   const t=S.tasks[id];if(!t)return;const info=t.kind==='info',title=$('#dT').value.trim(),desc=$('#dD').value.trim();
@@ -473,7 +502,7 @@ async function saveTask(id){
   const p={updatedAt:Date.now()},ch=[];
   if(title!==t.title){p.title=title;ch.push('upraven název')}if(desc!==(t.desc||'')){p.desc=desc;ch.push('upraven popis')}
   if(!info){const due=$('#dDue').value,st=$('#dSt').value,src=$('#dSrc').value;
-    if(due!==(t.due||'')){p.due=due;ch.push(due?'termín '+fmt(due):'termín zrušen')}
+    if(due!==(t.due||'')){p.due=due;p.reminderSent=false;ch.push(due?'termín '+fmt(due):'termín zrušen')}
     if(st!==t.status&&canDone(t)){p.status=st;p.doneAt=st==='done'?Date.now():0;ch.push('stav: '+ST[st])}
     if(src!==t.source){p.source=src;ch.push('zdroj: '+SRC[src])}}
   if(!ch.length){close();return}
@@ -482,7 +511,7 @@ async function saveTask(id){
 async function delegate(id){
   const t=S.tasks[id],to=$('#dTo').value,note=$('#dNote').value.trim();if(!t)return;
   if(to===(t.assignee||'')){toast('Vyberte jiného řešitele');return}
-  if(await write('tasks/'+id,{assignee:to,assignedAt:Date.now(),assignedBy:S.me,updatedAt:Date.now(),log:logE(t,`předáno: ${nm(t.assignee)} → ${nm(to)}${note?' — '+note:''}`)},true)){close();toast('Úkol předán: '+nm(to))}
+  if(await write('tasks/'+id,{assignee:to,assignedAt:Date.now(),assignedBy:S.me,updatedAt:Date.now(),reminderSent:false,log:logE(t,`předáno: ${nm(t.assignee)} → ${nm(to)}${note?' — '+note:''}`)},true)){close();notify([id],'delegate');toast('Úkol předán: '+nm(to))}
 }
 async function toggle(id){
   const t=S.tasks[id];if(!t)return;if(!canDone(t)){toast('Úkol může označit jako splněný jen řešitel.');return}const st=t.status==='done'?'open':'done';
@@ -627,7 +656,7 @@ async function createImport(){
   const meeting=(S.f.impName||'').trim()||'Porada '+fmt(S.f.impDate||today()),now=Date.now();
   const list=rows.flatMap(r=>{const t={kind:r.kind,title:r.title.trim(),desc:r.desc||'',author:S.me,createdAt:now,updatedAt:now,source:'porada',meeting,log:[{t:now,by:S.me,a:'vytvořeno importem z porady'}]};
     if(r.kind==='task'){Object.assign(t,{batch:rid('b'),assignee:r.assignee||'',due:r.due||'',status:'open',assignedAt:now,assignedBy:S.me,doneAt:0});return expand(t)}return[t]});
-  const ok=await addTasks(list);S.creating=false;
+  const ok=await addTasks(list);S.creating=false;if(ok)notify(ok.filter((x,i)=>list[i].kind==='task'));
   if(ok){S.importRows=[];S.f.impText='';S.f.impName='';toast(`Vytvořeno ${list.length} ${pl(list.length,'položka','položky','položek')} z porady „${meeting}“`);S.scope='vse';S.fGroup='';S.fStatus='aktivni';location.hash='ukoly'}
   render();
 }
@@ -661,6 +690,7 @@ document.addEventListener('click',async e=>{
     case 'open':openTask(id);break;
     case 'close':close();break;
     case 'nRm':S.nSel.delete(id);renderChips();break;
+    case 'rmAs':if(!b.dataset.armed){b.dataset.armed='1';b.textContent='Odebrat?';b.classList.add('arm');break}await busy(()=>removeAssignee(id,b.dataset.of));break;
     case 'new':openNew(b.id==='newBtn'&&S.view==='informace'?'info':b.dataset.kind);break;
     case 'nk':S.newKind=b.dataset.v;b.parentNode.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#nTF').hidden=S.newKind==='info';break;
     case 'create':await busy(create);break;
@@ -674,7 +704,7 @@ document.addEventListener('click',async e=>{
     case 'parse':await parse();break;
     case 'createImport':await createImport();break;
     case 'clearImport':S.importRows=[];render();break;
-    case 'saveCfg':{const d=Math.min(30,Math.max(1,parseInt(S.f.cfgDays??S.cfg.reminderDays,10)||4));const cfg={...S.cfg,reminderDays:d,emailNotif:!!(S.f.cfgMail??S.cfg.emailNotif)};
+    case 'saveCfg':{const d=Math.min(30,Math.max(1,parseInt(S.f.cfgDays??S.cfg.reminderDays,10)||4));const cfg={...S.cfg,reminderDays:d,emails:!!(S.f.cfgMail??(S.cfg.emails!==false))};
       if(await write('config/app',cfg)){delete S.f.cfgDays;delete S.f.cfgMail;toast('Nastavení uloženo')}break}
     case 'addMember':{const name=(S.f.addName||'').trim(),mail=(S.f.addMail||'').trim().toLowerCase();
       if(!name||!validMail(mail)){toast('Vyplňte jméno a platný e-mail');break}
@@ -715,6 +745,7 @@ document.addEventListener('change',async e=>{
   if(el.id==='fStatus'){S.fStatus=el.value;$('#list').innerHTML=listHTML()}
   else if(el.id==='fSource'){S.fSource=el.value;$('#list').innerHTML=listHTML()}
   else if(el.id==='fGroup'){S.fGroup=el.value;render()}
+  else if(el.id==='dAdd'&&el.value){const v=el.value;el.disabled=true;await addAssignees(el.dataset.of,v);el.disabled=false;el.value=''}
   else if(el.id==='nAdd'&&el.value){const v=el.value;if(v.startsWith('g:'))((grp(v)||{}).members||[]).map(resolve).filter(Boolean).forEach(x=>S.nSel.add(x));else S.nSel.add(v);el.value='';renderChips()}
   else if(el.dataset.gm&&S.gEdit){el.checked?S.gEdit.members.add(el.dataset.gm):S.gEdit.members.delete(el.dataset.gm);gCount()}
   else if(el.dataset.bind){S.f[el.dataset.bind]=el.type==='checkbox'?el.checked:el.value}

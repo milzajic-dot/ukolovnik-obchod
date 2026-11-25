@@ -29,6 +29,18 @@ V projektu na Vercelu **Settings → Environment Variables** (Production i Previ
 
 Po změně proměnných spusťte **Deployments → Redeploy**.
 
+**E-maily** (nový/předaný úkol, připomínka 3 pracovní dny před termínem):
+
+| Proměnná | Hodnota |
+|---|---|
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | poštovní server (např. `smtp.office365.com`, `587`) |
+| `MAIL_FROM` | odesílatel, např. `Úkolovník <ukolovnik@konicaminolta.cz>` |
+| `RESEND_API_KEY` | alternativa k SMTP (služba Resend) |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON klíč servisního účtu Firebase – potřebný pro denní připomínky |
+| `CRON_SECRET` | náhodný řetězec; Vercel jím ověřuje denní spuštění `/api/cron-reminders` (06:00 SEČ) |
+
+
+
 ### 3. První přihlášení
 1. První administrátor (dle `ADMIN_EMAILS` a `firestore.rules`) se zaregistruje, ověří e-mail a vyplní profil.
 2. V **Správa** založí ostatní uživatele předem (jméno, e-mail, lokalita, pozice, role) a vytvoří skupiny.

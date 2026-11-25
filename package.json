@@ -4,5 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Úkolovník obchodního týmu Konica Minolta",
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.14"
+  }
 }
