@@ -139,7 +139,9 @@ export async function serviceToken(scope = 'https://www.googleapis.com/auth/data
 
 // ---------- E-mail ----------
 // Buď RESEND_API_KEY (+ MAIL_FROM), nebo SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS (+ MAIL_FROM).
-export const mailConfigured = () => Boolean(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+// Toleruje i překlep SMPT_PASS v názvu proměnné.
+const smtpPass = () => (process.env.SMTP_PASS || process.env.SMPT_PASS || '').replace(/\s+/g, '');
+export const mailConfigured = () => Boolean(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && smtpPass()));
 export const appUrl = () => (process.env.APP_URL || 'https://ukolovnik-obchod.vercel.app').replace(/\/$/, '');
 let smtpTransport = null;
 export async function sendMail({ to, subject, html, text }) {
@@ -158,7 +160,7 @@ export async function sendMail({ to, subject, html, text }) {
     const port = Number(process.env.SMTP_PORT || 587);
     smtpTransport = nodemailer.createTransport({
       host: process.env.SMTP_HOST, port, secure: port === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      auth: { user: process.env.SMTP_USER, pass: smtpPass() },
     });
   }
   await smtpTransport.sendMail({ from, to, subject, html, text });
