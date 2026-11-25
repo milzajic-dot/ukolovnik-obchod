@@ -109,19 +109,20 @@ export async function patchDoc(path, data, token) {
 
 // ---------- Servisní účet Firebase (pro denní připomínky) ----------
 // FIREBASE_SERVICE_ACCOUNT = celý JSON klíče z Firebase konzole (Project settings → Service accounts → Generate new private key).
-let saCache = { token: '', exp: 0 };
+const saCache = {};
 export function serviceAccount() {
   try { const j = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || ''); return j && j.private_key && j.client_email ? j : null; } catch (e) { return null; }
 }
-export async function serviceToken() {
+export async function serviceToken(scope = 'https://www.googleapis.com/auth/datastore') {
   const sa = serviceAccount();
   if (!sa) return null;
   const now = Math.floor(Date.now() / 1000);
-  if (saCache.token && saCache.exp > now + 60) return saCache.token;
+  const c = saCache[scope];
+  if (c && c.exp > now + 60) return c.token;
   const { createSign } = await import('node:crypto');
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
-    iss: sa.client_email, scope: 'https://www.googleapis.com/auth/datastore',
+    iss: sa.client_email, scope,
     aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
   })}`;
   const sig = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
@@ -132,8 +133,8 @@ export async function serviceToken() {
   });
   if (!r.ok) throw new Error(`Google token ${r.status}`);
   const j = await r.json();
-  saCache = { token: j.access_token, exp: now + (j.expires_in || 3600) };
-  return saCache.token;
+  saCache[scope] = { token: j.access_token, exp: now + (j.expires_in || 3600) };
+  return j.access_token;
 }
 
 // ---------- E-mail ----------

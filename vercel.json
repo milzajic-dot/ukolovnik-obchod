@@ -8,6 +8,10 @@
     },
     "api/cron-reminders.js": {
       "maxDuration": 60
+    },
+    "api/deploy-rules.js": {
+      "maxDuration": 30,
+      "includeFiles": "firestore.rules"
     }
   },
   "crons": [
