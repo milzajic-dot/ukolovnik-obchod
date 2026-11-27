@@ -9,6 +9,9 @@
     "api/cron-reminders.js": {
       "maxDuration": 60
     },
+    "api/push-register.js": {
+      "maxDuration": 30
+    },
     "api/deploy-rules.js": {
       "maxDuration": 30,
       "includeFiles": "firestore.rules"

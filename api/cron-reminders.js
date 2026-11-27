@@ -2,6 +2,7 @@ import {
   serviceToken, listDocs, patchDoc, getDoc, sendMail, mailConfigured, mailLayout,
   workdaysBefore, todayPrague, fmtDate,
 } from './_lib.js';
+import { pushReady, pushTo, loadContext } from './_push.js';
 
 // Denní připomínka (Vercel Cron): 3 pracovní dny před termínem pošle e-mail každému řešiteli,
 // který úkol ještě nesplnil. Každý úkol se připomene jen jednou (pole reminderSent; po změně termínu se vynuluje).
@@ -17,22 +18,31 @@ export function dueForReminder(t, today, days = REMIND_WORKDAYS) {
 export default async function handler(req, res) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Neoprávněný přístup.' });
-  if (!mailConfigured()) return res.status(200).json({ ok: false, reason: 'E-mail není nastavený.' });
   const token = await serviceToken().catch(() => null);
   if (!token) return res.status(200).json({ ok: false, reason: 'Chybí FIREBASE_SERVICE_ACCOUNT.' });
 
-  const cfg = await getDoc('config/app', token).catch(() => null);
-  if (cfg && cfg.emails === false) return res.status(200).json({ ok: true, disabled: true });
+  const ctx = await loadContext(token);
+  const cfg = ctx.cfg;
+  const mailOn = mailConfigured() && !(cfg && cfg.emails === false);
+  const pushOn = pushReady();
+  if (!mailOn && !pushOn) return res.status(200).json({ ok: true, disabled: true });
 
   const today = todayPrague();
-  const [tasks, members] = await Promise.all([listDocs('tasks', token), listDocs('members', token)]);
-  const byId = new Map(members.map((m) => [m.id, m]));
-  let sent = 0;
+  const tasks = ctx.tasks;
+  const byId = ctx.members;
+  let sent = 0, pushed = 0;
   const errors = [];
   for (const t of tasks.filter((x) => dueForReminder(x, today))) {
     const m = byId.get(t.assignee);
     try {
-      if (m && m.email) {
+      if (pushOn && m) {
+        pushed += await pushTo(t.assignee, {
+          title: 'Blíží se termín úkolu',
+          body: `${t.title} · termín ${fmtDate(t.due)}`,
+          tag: `${t.id}:soon`,
+        }, ctx, token).catch(() => 0);
+      }
+      if (mailOn && m && m.email) {
         const author = byId.get(t.author) || {};
         const { html, text } = mailLayout({
           heading: 'Blíží se termín úkolu',
@@ -47,5 +57,5 @@ export default async function handler(req, res) {
       errors.push(`${t.id}: ${String(e.message || e).slice(0, 120)}`);
     }
   }
-  return res.status(200).json({ ok: true, today, sent, errors: errors.slice(0, 10) });
+  return res.status(200).json({ ok: true, today, sent, pushed, errors: errors.slice(0, 10) });
 }

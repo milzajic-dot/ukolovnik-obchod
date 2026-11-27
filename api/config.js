@@ -10,6 +10,8 @@ export default function handler(req, res) {
     domain: allowedDomain(),
     admins: adminEmails(),
     mail: mailConfigured(),
+    push: Boolean(serviceAccount()),
+    vapid: process.env.FCM_VAPID_KEY || '',
     reminders: Boolean(mailConfigured() && serviceAccount() && process.env.CRON_SECRET),
   });
 }

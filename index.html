@@ -87,6 +87,7 @@ nav a:hover{background:var(--card)}nav a[aria-current]{background:var(--blue);co
 .btn{min-height:44px;padding:0 18px;border-radius:6px;border:1px solid var(--blue);color:var(--blue);background:transparent;cursor:pointer;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn.pri{background:var(--blue);color:var(--onblue)}.btn.hot{background:var(--blue);border-color:var(--blue);color:var(--onblue)}.btn:hover{filter:brightness(1.08)}
 .btn.danger{border-color:var(--pinkt);color:var(--pinkt)}.btn[disabled]{opacity:.5;cursor:default}
+.pbn{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--card);border:1px solid var(--blue);border-left:5px solid var(--blue);border-radius:8px;padding:12px 16px;margin:0 0 18px;box-shadow:var(--sh)}.pbn>div:first-child{display:flex;flex-direction:column;gap:3px;flex:1 1 240px}.pbn span{color:var(--mut);font-size:14px;line-height:1.45}
 .lnk{background:none;border:0;color:var(--blue);text-decoration:underline;cursor:pointer;padding:8px;font-size:14px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:12px;padding:3px;background:var(--card)}
 .seg button{min-height:38px;padding:0 14px;border:0;border-radius:9px;background:none;cursor:pointer;font-weight:500;white-space:nowrap}
@@ -189,6 +190,7 @@ label.btn{font-size:16px;font-weight:500;color:var(--blue)}
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getMessaging,getToken,deleteToken,isSupported as pushSupported} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js';
 import {getFirestore,doc,collection,onSnapshot,setDoc,updateDoc,deleteDoc,writeBatch,getDocs,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const $=s=>document.querySelector(s);
@@ -261,9 +263,32 @@ async function write(path,data,merge){try{const r=doc(fdb,path);if(merge)await u
 async function del(path){try{await deleteDoc(doc(fdb,path));return true}catch(e){console.error(e);toast(errMsg(e));return false}}
 async function addTasks(list){try{const ids=[];for(let i=0;i<list.length;i+=400){const b=writeBatch(fdb);list.slice(i,i+400).forEach(t=>{const id=rid('t');ids.push(id);b.set(doc(fdb,'tasks',id),t)});await b.commit()}return ids}catch(e){console.error(e);toast(errMsg(e));return false}}
 // E-mail řešitelům (server ho pošle jen ostatním, ne zadavateli). Chyba e-mailu nesmí zastavit práci v aplikaci.
-async function notify(ids,reason){if(!ids||!ids.length||!S.srv||!S.srv.mail||!auth||!auth.currentUser)return;
+async function notify(ids,reason){if(!ids||!ids.length||!S.srv||!(S.srv.mail||S.srv.push)||!auth||!auth.currentUser)return;
   try{const tok=await auth.currentUser.getIdToken();const r=await fetch('/api/notify',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+tok},body:JSON.stringify({ids,reason:reason||'new'})});
     if(r.ok){const j=await r.json();if(j.sent)toast(`E-mail odeslán ${j.sent} ${pl(j.sent,'řešiteli','řešitelům','řešitelům')}`)}}catch(e){console.error(e)}}
+// ---------- Oznámení na telefon a počet na ikoně (Web Push přes Firebase Cloud Messaging) ----------
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const notifPerm=()=>'Notification' in window?Notification.permission:'unsupported';
+async function enablePush(){
+  try{if(!S.srv||!S.srv.push||!app||!auth.currentUser||notifPerm()!=='granted'||!('serviceWorker' in navigator))return false;
+    if(!(await pushSupported()))return false;
+    const reg=await navigator.serviceWorker.ready,opt={serviceWorkerRegistration:reg};if(S.srv.vapid)opt.vapidKey=S.srv.vapid;
+    const tk=await getToken(getMessaging(app),opt);if(!tk)return false;
+    const key=S.me+'|'+tk;if(localStorage.getItem('ukol-push')===key)return true;
+    const r=await fetch('/api/push-register',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+await auth.currentUser.getIdToken()},body:JSON.stringify({token:tk})});
+    if(r.ok&&(await r.json()).ok){localStorage.setItem('ukol-push',key);return true}return false}catch(e){console.error('push',e);return false}}
+async function disablePush(){
+  try{const v=localStorage.getItem('ukol-push');if(!v||!auth.currentUser)return;const tk=v.split('|')[1];localStorage.removeItem('ukol-push');
+    await fetch('/api/push-register',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+await auth.currentUser.getIdToken()},body:JSON.stringify({token:tk,remove:true})});
+    await deleteToken(getMessaging(app)).catch(()=>{})}catch(e){}}
+function pushBanner(){
+  if(!S.srv||!S.srv.push||localStorage.getItem('ukol-pushhide'))return'';
+  const p=notifPerm();
+  if(p==='granted'||p==='denied')return'';
+  if(p==='unsupported'){if(!isIOS()||standalone())return'';
+    return`<div class="pbn"><div><b>Počet nových úkolů na ikoně</b><span>Na iPhonu klepněte v Safari na <b>Sdílet</b> → <b>Přidat na plochu</b>, otevřete Úkolovník z plochy a zapněte upozornění.</span></div><button class="lnk" data-act="pushHide">Skrýt</button></div>`}
+  return`<div class="pbn"><div><b>Zapněte upozornění</b><span>O novém úkolu se dozvíte hned a na ikoně aplikace uvidíte počet nových úkolů — jako u WhatsAppu.</span></div><div class="acts" style="margin:0"><button class="btn pri" data-act="notifOn">Zapnout</button><button class="lnk" data-act="pushHide">Později</button></div></div>`}
 const logE=(t,a)=>[...(t.log||[]),{t:Date.now(),by:S.me,a}].slice(-30);
 // Úkol pro skupinu: buď jeden společný, nebo samostatná kopie pro každého člena.
 function expand(t){if(!String(t.assignee||'').startsWith('g:'))return[t];const g=grp(t.assignee);if(!g)return[t];
@@ -318,7 +343,7 @@ function vDash(){
     const mt=tasks().filter(([,t])=>t.assignee===id);return{name,l:mt.filter(([,t])=>isLate(t)).length,o:mt.filter(([,t])=>t.status!=='done'&&!isLate(t)).length,d:mt.filter(([,t])=>t.status==='done').length}})
     .filter(x=>x.l+x.o+x.d>0).sort((a,b)=>(b.l+b.o)-(a.l+a.o));
   const max=Math.max(1,...rows.map(x=>x.l+x.o+x.d)),sc=all?'vse':'moje';
-  return `<section class="head"><div><h1>${all?'Přehled týmu':'Můj přehled'}</h1><p class="lead">${esc(lead)}</p></div>
+  return `${pushBanner()}<section class="head"><div><h1>${all?'Přehled týmu':'Můj přehled'}</h1><p class="lead">${esc(lead)}</p></div>
   <div class="filters" style="margin:0">${all?`<select id="fGroup" aria-label="Skupina, lokalita nebo pozice">${scopeOpts(S.fGroup)}</select>`:''}<div class="seg" role="group" aria-label="Rozsah přehledu"><button data-act="dash" data-v="moje" aria-pressed="${!all}">Moje</button><button data-act="dash" data-v="tym" aria-pressed="${all}">Celý tým</button></div></div></section>
   <div class="kpi"><button data-act="go" data-sc="${sc}" data-st="aktivni"><b>${open.length}</b><span>Otevřené</span></button><button class="${late.length?'hot':''}" data-act="go" data-sc="${sc}" data-st="late"><b>${late.length}</b><span>Po termínu</span></button><button data-act="go" data-sc="${sc}" data-st="soon"><b>${soon.length}</b><span>Termín do ${rd()} ${pl(rd(),'dne','dnů','dnů')}</span></button><button data-act="go" data-sc="${sc}" data-st="done"><b>${done30.length}</b><span>Splněno za 30 dní</span></button></div>
   <div class="cols"><section><h2>Na řadě</h2>${next.length?`<ul class="list">${next.map(([id,t])=>row(id,t,all)).join('')}</ul>`:`<p class="empty">Žádný otevřený úkol. Nový přidáte tlačítkem „+ Nový“ nebo importem zápisu z porady.</p>`}
@@ -541,7 +566,7 @@ function openProfile(){
   <div class="grid2"><label>Lokalita<input id="pL" list="dlLoc" value="${esc(m.location||'')}" placeholder="např. Praha"></label><label>Pozice<input id="pP" list="dlPos" value="${esc(m.position||'')}" placeholder="např. Obchodní zástupce"></label></div>
   <div class="acts"><button class="btn pri" data-act="saveProfile">Uložit profil</button></div>
   <h3>Upozornění v prohlížeči</h3>
-  <p class="hint">${perm==='granted'?'Zapnuto — o novém úkolu se dozvíte, i když je aplikace na pozadí.':perm==='denied'?'Zablokováno v nastavení prohlížeče.':perm==='unsupported'?'Tento prohlížeč upozornění nepodporuje.':'Dostávejte upozornění na nové úkoly i mimo aplikaci.'} Tip: aplikaci si nainstalujte (v Chrome/Edge ikona v adresním řádku, na iPhonu „Přidat na plochu“), pak uvidíte počet úkolů na ikoně.</p>
+  <p class="hint">${perm==='granted'?'Zapnuto — o novém úkolu se dozvíte i při zavřené aplikaci a na ikoně uvidíte počet nových úkolů.':perm==='denied'?'Zablokováno v nastavení prohlížeče.':perm==='unsupported'?(isIOS()&&!standalone()?'Na iPhonu fungují upozornění jen v aplikaci přidané na plochu (Sdílet → Přidat na plochu). Pak ji otevřete z plochy a upozornění zapněte zde.':'Tento prohlížeč upozornění nepodporuje.'):'Dostávejte upozornění na nové úkoly i mimo aplikaci.'} Tip: aplikaci si nainstalujte (v Chrome/Edge ikona v adresním řádku, na iPhonu „Přidat na plochu“), pak uvidíte počet úkolů na ikoně.</p>
   ${perm==='default'?'<div class="acts"><button class="btn" data-act="notifOn">Zapnout upozornění</button></div>':''}
   <div class="acts" style="margin-top:28px"><button class="btn danger" data-act="logout">Odhlásit se</button></div>`);
 }
@@ -722,8 +747,11 @@ document.addEventListener('click',async e=>{
     case 'profile':openProfile();break;
     case 'saveProfile':{const name=$('#pN').value.trim();if(!name){toast('Vyplňte jméno');break}
       if(await write('members/'+S.me,{name,location:$('#pL').value.trim(),position:$('#pP').value.trim()},true)){close();toast('Profil uložen')}break}
-    case 'notifOn':try{const p=await Notification.requestPermission();toast(p==='granted'?'Upozornění zapnuta':'Upozornění nebyla povolena');openProfile()}catch(x){}break;
-    case 'logout':close();await signOut(auth);break;
+    case 'notifOn':try{const p=await Notification.requestPermission();
+      if(p==='granted'){const ok=await enablePush();toast(ok?'Upozornění zapnuta — počet úkolů uvidíte na ikoně':'Upozornění zapnuta')}else toast('Upozornění nebyla povolena');
+      if(!$('#layer').hidden&&$('#pN'))openProfile();render()}catch(x){console.error(x)}break;
+    case 'pushHide':localStorage.setItem('ukol-pushhide','1');render();break;
+    case 'logout':close();await disablePush();await signOut(auth);break;
     case 'csv':csv();break;
     case 'onboard':await busy(onboard);break;
     case 'mode':S.authMode=b.dataset.v;renderAuth();break;
@@ -762,7 +790,7 @@ function handleUser(u){
   if(!u){S.auth='signedout';S.me=null;render();return}
   if(!domainOk(u.email)){S.auth='baddomain';render();return}
   if(!u.emailVerified){S.auth='unverified';render();return}
-  S.me=u.uid;S.email=u.email.toLowerCase();S.auth='ready';startSubs();render();
+  S.me=u.uid;S.email=u.email.toLowerCase();S.auth='ready';startSubs();render();setTimeout(enablePush,1500);
 }
 async function boot(){
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
